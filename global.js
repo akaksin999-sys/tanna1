@@ -44,7 +44,7 @@
   );
 
   // --- Hosted Domain Detect ---
-  let hostedDomain = "https://sixtow.netlify.app";
+  let hostedDomain = "thunderous-tanuki-512234.netlify.app";
   try {
     if (document.currentScript && document.currentScript.src) {
       const scriptUrl = new URL(document.currentScript.src);
