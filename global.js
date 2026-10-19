@@ -415,35 +415,35 @@
 
     function injectCustomPaymentUI() {
       const timer = setInterval(() => {
-        const headers = Array.from(
-          document.querySelectorAll("header, h2, h3, .title, .css-17g8nhj")
-        );
-        const paymentHeader = headers.find((h) => {
-          const text = (h.innerText || "").replace(/\s/g, "");
-          return text.includes("결제수단");
+        // 아임웹 결제 페이지의 제목 태그/클래스 변경에 대응
+        const paymentHeader = Array.from(
+          document.querySelectorAll('h1,h2,h3,h4,h5,h6,header,legend,label,span,div,p,strong')
+        ).find((el) => {
+          if (el.closest('.pay-method-custom')) return false;
+          const ownText = Array.from(el.childNodes)
+            .filter((n) => n.nodeType === Node.TEXT_NODE)
+            .map((n) => n.textContent).join('').replace(/\s/g, '');
+          return ownText === '결제수단' || ownText === '결제방법';
         });
         if (!paymentHeader) return;
 
         const paymentSection =
-          paymentHeader.closest('div[class*="css-"]') ||
-          paymentHeader.closest(".pay-method-section") ||
+          paymentHeader.closest('.pay-method-section') ||
+          paymentHeader.closest('section') ||
           paymentHeader.parentElement;
         if (!paymentSection) return;
 
-        if (paymentSection.querySelector(".pay-method-custom")) {
+        if (document.querySelector('.pay-method-custom')) {
           clearInterval(timer);
           return;
         }
 
-        const radios = Array.from(
-          document.querySelectorAll('input[type="radio"]')
-        );
-        const bankRadio = radios.find(
-          (r) => r.value && String(r.value).includes("OPM01")
-        );
-        if (!bankRadio) return;
-
-        if (!bankRadio.checked) bankRadio.click();
+        const radios = Array.from(document.querySelectorAll('input[type="radio"]'));
+        const bankRadio = radios.find((r) =>
+          String(r.value || '').includes('OPM01')
+        ) || null;
+        // OPM01 라디오가 없는 최신 아임웹 구조에서도 버튼 UI는 표시
+        if (bankRadio && !bankRadio.checked) bankRadio.click();
 
         let depositorBlock = document.querySelector(".css-1hw29i9");
         if (!depositorBlock) {
@@ -457,7 +457,7 @@
           }
         }
 
-        const fieldset = bankRadio.closest("fieldset");
+        const fieldset = bankRadio ? bankRadio.closest("fieldset") : null;
 
         const customUI = document.createElement("div");
         customUI.className = "pay-method-custom";
@@ -534,8 +534,8 @@
           });
         });
 
-        localStorage.setItem("payMethod", "BankTransfer");
-        setActive("BANK");
+        const savedMethod = localStorage.getItem("payMethod");
+        setActive(savedMethod === "CreditCard" ? "CREDIT" : "BANK");
 
         console.log(LOG_PREFIX + "Custom Payment UI injected");
         clearInterval(timer);
