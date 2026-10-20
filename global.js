@@ -44,7 +44,7 @@
   );
 
   // --- Hosted Domain Detect ---
-  let hostedDomain = "thunderous-tanuki-512234.netlify.app";
+  let hostedDomain = "https://thunderous-tanuki-512234.netlify.app";
   try {
     if (document.currentScript && document.currentScript.src) {
       const scriptUrl = new URL(document.currentScript.src);
@@ -415,15 +415,19 @@
 
     function injectCustomPaymentUI() {
       const timer = setInterval(() => {
+        try {
         // 아임웹 결제 페이지의 제목 태그/클래스 변경에 대응
         const paymentHeader = Array.from(
           document.querySelectorAll('h1,h2,h3,h4,h5,h6,header,legend,label,span,div,p,strong')
         ).find((el) => {
           if (el.closest('.pay-method-custom')) return false;
           const ownText = Array.from(el.childNodes)
-            .filter((n) => n.nodeType === Node.TEXT_NODE)
+            .filter((n) => n.nodeType === 3)
             .map((n) => n.textContent).join('').replace(/\s/g, '');
-          return ownText === '결제수단' || ownText === '결제방법';
+          const visibleText = (el.textContent || '').replace(/\s/g, '');
+          return ownText === '결제수단' || ownText === '결제방법' ||
+            ((el.matches('header,h1,h2,h3,h4,h5,h6,legend')) &&
+             (visibleText === '결제수단' || visibleText === '결제방법'));
         });
         if (!paymentHeader) return;
 
@@ -443,7 +447,8 @@
           String(r.value || '').includes('OPM01')
         ) || null;
         // OPM01 라디오가 없는 최신 아임웹 구조에서도 버튼 UI는 표시
-        if (bankRadio && !bankRadio.checked) bankRadio.click();
+        // DOM을 교체할 수 있는 radio.click()은 UI 삽입 후 실행한다.
+        // 기존 선택 상태는 변경하지 않고 Imweb 기본 선택을 유지한다.
 
         let depositorBlock = document.querySelector(".css-1hw29i9");
         if (!depositorBlock) {
@@ -501,7 +506,9 @@
         function applyMethodUI(method) {
           const stateMethod =
             method === "CREDIT" ? "CreditCard" : "BankTransfer";
-          localStorage.setItem("payMethod", stateMethod);
+          try { localStorage.setItem("payMethod", stateMethod); }
+          catch (e) { console.warn(LOG_PREFIX + "Storage unavailable:", e); }
+          window.__fntPayMethod = method;
 
           if (method === "CREDIT") {
             if (depositorBlock) depositorBlock.style.display = "none";
@@ -531,11 +538,15 @@
           });
         });
 
-        const savedMethod = localStorage.getItem("payMethod");
+        let savedMethod = "";
+        try { savedMethod = localStorage.getItem("payMethod") || ""; } catch (e) {}
         setActive(savedMethod === "CreditCard" ? "CREDIT" : "BANK");
 
         console.log(LOG_PREFIX + "Custom Payment UI injected");
         clearInterval(timer);
+        } catch (e) {
+          console.error(LOG_PREFIX + "Payment UI injection error:", e);
+        }
       }, 400);
     }
 
@@ -593,7 +604,8 @@
       let method = overrideMethod;
       if (!method) {
         try {
-          const uiState = localStorage.getItem("payMethod");
+          const uiState = window.__fntPayMethod === "CREDIT" ? "CreditCard" :
+            window.__fntPayMethod === "BANK" ? "BankTransfer" : localStorage.getItem("payMethod");
           if (uiState === "CreditCard") method = "CREDIT";
           else if (uiState === "BankTransfer") method = "BANK";
           else method = "BANK";
@@ -632,7 +644,7 @@
       return paymentData;
     }
 
-    window.addEventListener("load", function () {
+    function onPaymentPageReady() {
       // ✅ 주문자 정보 input 이벤트
       try {
         ["ordererName", "ordererCall", "ordererEmail"].forEach((name) => {
@@ -697,7 +709,9 @@
         },
         true
       );
-    });
+    }
+    if (document.readyState === "complete") onPaymentPageReady();
+    else window.addEventListener("load", onPaymentPageReady, { once: true });
 
     if (document.readyState === "loading") {
       document.addEventListener("DOMContentLoaded", injectCustomPaymentUI);
@@ -711,7 +725,7 @@
   function handleShopPaymentComplete() {
     console.log(LOG_PREFIX + "Routing: /shop_payment_complete");
 
-    window.addEventListener("load", function () {
+    function onCompletePageReady() {
       const urlOrderNo = getURLParam("order_no");
 
       let stored = null;
@@ -764,7 +778,9 @@
       } else {
         console.log(LOG_PREFIX + "BANK intent or unknown -> no auto payment");
       }
-    });
+    }
+    if (document.readyState === "complete") onCompletePageReady();
+    else window.addEventListener("load", onCompletePageReady, { once: true });
   }
 
   // ---------------- Router ----------------
