@@ -413,6 +413,52 @@
   function handleShopPayment() {
     console.log(LOG_PREFIX + "Routing: /shop_payment");
 
+    // Default to card on every fresh checkout visit; hide native bank UI as soon as this script runs.
+    window.__fntPayMethod = "CREDIT";
+    try { localStorage.setItem("payMethod", "CreditCard"); } catch (e) {}
+
+    const bankHideStyle = document.createElement("style");
+    bankHideStyle.id = "fnt-bank-visibility-guard";
+    bankHideStyle.textContent = `
+      html:not(.fnt-bank-selected) .fnt-native-bank-detail,
+      html:not(.fnt-bank-selected) .fnt-native-bank-fieldset {
+        display: none !important;
+      }
+    `;
+    (document.head || document.documentElement).appendChild(bankHideStyle);
+    document.documentElement.classList.remove("fnt-bank-selected");
+
+    function guardBankDetails() {
+      const isBank = window.__fntPayMethod === "BANK";
+      document.documentElement.classList.toggle("fnt-bank-selected", isBank);
+      // Scope to the checkout's bank payment option and depositor/account controls.
+      const bankRadio = Array.from(document.querySelectorAll('input[type="radio"]'))
+        .find(r => String(r.value || "").includes("OPM01"));
+      if (bankRadio) {
+        const fieldset = bankRadio.closest("fieldset");
+        if (fieldset) fieldset.classList.add("fnt-native-bank-fieldset");
+      }
+      const selectors = [
+        '.css-1hw29i9',
+        'input[placeholder*="입금자명"]',
+        'input[name="depositor"]'
+      ];
+      selectors.forEach(sel => {
+        document.querySelectorAll(sel).forEach(el => {
+          if (el.closest('.pay-method-custom') && isBank) return;
+          const wrapper = el.matches('input') ? (el.closest('label') || el.parentElement) : el;
+          if (wrapper && !wrapper.classList.contains('pay-method-custom'))
+            wrapper.classList.add('fnt-native-bank-detail');
+        });
+      });
+    }
+    guardBankDetails();
+    // Imweb can recreate the bank fields after asynchronous loading.
+    const bankGuardTimer = setInterval(() => {
+      if (!pathMatches(CONFIG.PATHS.INFO)) { clearInterval(bankGuardTimer); return; }
+      try { guardBankDetails(); } catch (e) { console.warn(LOG_PREFIX + 'Bank guard:', e); }
+    }, 250);
+
     function injectCustomPaymentUI() {
       const timer = setInterval(() => {
         try {
@@ -501,7 +547,7 @@
 
         const area = customUI.querySelector("#fnt-depositor-area");
         const moved = area && depositorBlock;
-        if (fieldset && moved) fieldset.style.display = "none";
+        if (fieldset && moved) fieldset.classList.add("fnt-native-bank-fieldset");
 
         function applyMethodUI(method) {
           const stateMethod =
@@ -509,6 +555,7 @@
           try { localStorage.setItem("payMethod", stateMethod); }
           catch (e) { console.warn(LOG_PREFIX + "Storage unavailable:", e); }
           window.__fntPayMethod = method;
+          document.documentElement.classList.toggle("fnt-bank-selected", method === "BANK");
 
           if (method === "CREDIT") {
             if (depositorBlock) depositorBlock.style.display = "none";
@@ -528,6 +575,7 @@
           if (btn) btn.classList.add("active");
           applyMethodUI(method);
           saveCurrentState("Method Switch", method);
+          guardBankDetails();
         }
 
         buttons.forEach((btn) => {
@@ -538,9 +586,9 @@
           });
         });
 
-        let savedMethod = "";
-        try { savedMethod = localStorage.getItem("payMethod") || ""; } catch (e) {}
-        setActive(savedMethod === "CreditCard" ? "CREDIT" : "BANK");
+        // Always select card first, irrespective of the prior visit's stored choice.
+        setActive("CREDIT");
+        guardBankDetails();
 
         console.log(LOG_PREFIX + "Custom Payment UI injected");
         clearInterval(timer);
